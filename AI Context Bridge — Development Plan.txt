@@ -1,0 +1,325 @@
+﻿AI Context Bridge — Development Plan
+Vision
+Build a browser extension that allows users to move AI conversations between:
+* Claude Chat → New Claude Chat
+* Claude Account A → Claude Account B
+* Claude → ChatGPT
+* ChatGPT → Claude
+* ChatGPT/Claude → Cursor/Windsurf
+without manually rebuilding project context.
+All project contexts live:
+User Browser
+   ↓
+IndexedDB
+Users can:
+* Export
+* Delete
+* Backup
+their own data.
+MVP Scope
+Only solve:
+Use Case 1
+Claude Chat
+↓
+New Claude Chat
+________________
+
+
+Use Case 2
+Claude Account A
+↓
+Claude Account B
+________________
+
+
+Everything else comes later.
+High-Level Architecture
+Claude
+  ↓
+Conversation Extractor
+  ↓
+Project Context
+  ↓
+Local Storage
+  ↓
+Project Dashboard
+  ↓
+Context Loader
+  ↓
+New Claude Chat
+________________
+
+
+Technical Stack
+Extension
+* React
+* TypeScript
+* Manifest V3
+________________
+
+
+Storage
+* IndexedDB
+Why:
+* Large storage
+* Structured data
+* Browser-native
+________________
+
+
+Data Model
+interface ProjectContext {
+   id: string;
+
+
+   title: string;
+
+
+   sourcePlatform: string;
+
+
+   createdAt: number;
+
+
+   updatedAt: number;
+
+
+   messages: Message[];
+}
+
+
+interface Message {
+   role: "user" | "assistant";
+
+
+   content: string;
+
+
+   timestamp?: number;
+}
+________________
+
+
+________________
+Module 1: Claude Extractor
+Responsibility
+Read Claude conversations.
+________________
+
+
+Steps
+1. User clicks: Save Context
+2. Content script:
+* Reads current conversation
+* Extracts all messages
+3. Converts to: ProjectContext
+4. Stores locally
+________________
+
+
+Important
+Extractor must be isolated.
+Example: extractors/claudeExtractor.ts
+Because Claude's UI will eventually change.
+________________
+
+
+________________
+Module 2: Local Storage Layer
+Responsibility
+Store projects.
+________________
+
+
+Using: IndexedDB
+________________
+
+
+Functions:
+saveProject()
+
+
+getProject()
+
+
+deleteProject()
+
+
+listProjects()
+________________
+
+
+No backend.
+No API.
+No authentication.
+________________
+
+
+________________
+Module 3: Project Dashboard
+Popup UI.
+________________
+
+
+Example:
+Projects
+
+
+NEA Project
+
+
+F1 Analytics
+
+
+Startup Idea
+________________
+
+
+Actions:
+Open
+
+
+Delete
+
+
+Export
+
+
+Continue
+________________
+
+
+Module 4: Context Packaging
+Store conversations in portable format.
+Example:
+{
+ "messages": [...]
+}
+________________
+
+
+No compression.
+No summarization.
+No AI.
+Just raw conversation.
+________________
+
+
+________________
+Module 5: Chunk Engine
+Necessary because long chats can exceed limits.
+________________
+
+
+Goal
+Split conversation safely.
+Example:
+Chunk 1
+
+
+Chunk 2
+
+
+Chunk 3
+________________
+
+
+Functions:
+createChunks()
+
+
+estimateTokens()
+________________
+
+
+Token estimation:
+tokens ≈ chars / 4
+Good enough initially.
+________________
+
+
+________________
+Module 6: Context Loader
+Used when continuing conversations.
+________________
+
+
+Flow:
+Select Project
+      ↓
+Open New Claude Chat
+      ↓
+Load Context
+________________
+
+
+Loader:
+1. Retrieves project
+2. Retrieves chunks
+3. Injects chunk(s) into chat input
+________________
+
+
+Important:
+Never auto-send.
+Only populate input.
+User presses Enter.
+________________
+
+
+________________
+Module 7: Export / Backup
+Allow users to export.
+Formats:
+JSON
+and
+Markdown
+________________
+
+
+Benefits:
+* User owns backup
+* Can move devices manually
+* No cloud required
+________________
+
+
+Privacy & Security Layer
+Explicit Requirements
+Must Not
+❌ Upload chats
+❌ Send chats to servers
+❌ Store chats remotely
+❌ Use chats for analytics
+❌ Use chats for training
+________________
+
+
+Allowed Analytics
+Only anonymous events like:
+{
+ "feature": "save_context",
+ "success": true
+}
+Even this can be skipped initially.
+________________
+
+
+Future Phase: Claude → ChatGPT
+After MVP is stable.
+________________
+
+
+Additional component:
+Platform Adapter
+Example:
+ClaudeAdapter
+
+
+ChatGPTAdapter
+________________
+
+
+All platforms convert to:
+ProjectContext
+internally.

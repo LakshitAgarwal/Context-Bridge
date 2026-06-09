@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "AI Context Bridge",
+  "version": "0.1.0",
+  "description": "Seamlessly move AI conversations across accounts and chats.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://claude.ai/*"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content/extractor.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content/injector.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/networkHook.js"],
+      "matches": ["https://claude.ai/*"]
+    }
+  ]
+}
