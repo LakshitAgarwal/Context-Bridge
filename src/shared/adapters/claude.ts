@@ -10,39 +10,33 @@ export class ClaudeSourceAdapter implements SourceAdapter {
 
   async parseDOM(): Promise<Message[]> {
     const parsed: Message[] = [];
-    // Select all articles or containers that look like message bubbles
-    const messageRows = document.querySelectorAll('article, div[data-testid*="message"], div.font-sans');
     
-    messageRows.forEach(row => {
-      // Ignore sidebars, menus, or non-message text elements
-      if (row.closest('nav') || row.closest('header') || row.closest('[class*="sidebar"]')) {
+    // Select direct user and assistant text message blocks
+    const textBlocks = document.querySelectorAll(
+      'div.font-user, div.font-claude, [class*="font-user"], [class*="font-claude"], [data-testid="user-message"], [data-testid="assistant-message"]'
+    );
+    
+    textBlocks.forEach(block => {
+      // Exclude sidebars or menus
+      if (block.closest('nav') || block.closest('header') || block.closest('[class*="sidebar"]')) {
         return;
       }
 
-      // Check if it's an actual message container (heuristically)
-      const hasParagraphs = row.querySelector('p, pre, ul, ol');
-      if (!hasParagraphs) return;
+      const content = block.textContent?.trim() || '';
+      if (!content) return;
 
-      // Detect role: Assistant messages always contain action buttons like copy or retry
-      const hasAssistantControls = row.querySelector('button[aria-label*="Copy"], button[aria-label*="copy"], button[aria-label*="Retry"], svg[class*="thumbs"]');
-      const role = hasAssistantControls ? 'assistant' : 'user';
-
-      // Compile content text from paragraphs/nodes
-      const textElements = row.querySelectorAll('p, pre, ul, ol');
-      let content = '';
-      if (textElements.length > 0) {
-        content = Array.from(textElements)
-          .map(el => el.textContent || '')
-          .join('\n\n');
-      } else {
-        content = row.textContent || '';
+      const className = block.className || '';
+      const testId = block.getAttribute('data-testid') || '';
+      
+      let role: 'user' | 'assistant' | null = null;
+      if (className.includes('font-user') || testId.includes('user') || className.includes('user-message')) {
+        role = 'user';
+      } else if (className.includes('font-claude') || testId.includes('assistant') || className.includes('assistant-message')) {
+        role = 'assistant';
       }
 
-      // Clean common UI labels
-      content = content.replace(/Copy\b/g, '').trim();
-
-      if (content.length > 0) {
-        // Avoid duplicate pushes for nested containers by verifying the last item
+      if (role) {
+        // Prevent duplicate captures if elements are nested
         const lastItem = parsed[parsed.length - 1];
         if (lastItem && lastItem.content === content) return;
 
