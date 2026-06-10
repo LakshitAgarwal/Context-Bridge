@@ -257,6 +257,13 @@ export default function App() {
                       >
                         <span className="platform-dot platform-chatgpt"></span> ChatGPT
                       </button>
+                      <button 
+                        className="btn-card btn-target"
+                        onClick={() => handleRestore(project.id, 'gemini')}
+                        title="Restore to a new Gemini chat"
+                      >
+                        <span className="platform-dot platform-gemini"></span> Gemini
+                      </button>
                     </div>
                     <div className="btn-group-right">
                       <button 

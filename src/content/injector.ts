@@ -155,6 +155,11 @@ function checkActiveSession() {
       const path = window.location.pathname;
       // Accept / or query params, but exclude chat rooms, settings, share links, etc.
       isNewChat = path === '/' || path === '' || path.startsWith('/?');
+    } else if (targetPlatform === 'gemini') {
+      matchesPlatform = host.includes('gemini.google.com');
+      const path = window.location.pathname;
+      // Gemini defaults to /app and sometimes appends IDs immediately
+      isNewChat = path.startsWith('/app') || path === '/';
     } else {
       matchesPlatform = host.includes('claude.ai');
       isNewChat = href.includes('claude.ai/new') || /claude\.ai\/?(\?.*)?$/.test(href);

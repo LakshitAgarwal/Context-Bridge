@@ -1,6 +1,7 @@
 [✓] one claude chat to a new claude chat.
 [✓] Automated Snapshots: Automatically backup the chat context after every message so progress is never lost.
-[] one claude chat to a new chatgpt/gemini chat.
+[✓] one claude chat to a new chatgpt
+[] one claude chat to a gemini chat.
 [] gpt chat to claude/gemini
 [] gemini chat to claude/gpt
 [] one claude chat to a new claude chat in a different account.
