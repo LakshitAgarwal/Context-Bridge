@@ -2,7 +2,7 @@
 [✓] Automated Snapshots: Automatically backup the chat context after every message so progress is never lost.
 [✓] one claude chat to a new chatgpt
 [✓] one claude chat to a gemini chat.
-[] gpt chat to claude/gemini
+[✓] gpt chat to claude/gemini
 [] gemini chat to claude/gpt
 [] one claude chat to a new claude chat in a different account.
 [] Merging Contexts: Combine multiple separate chat histories into a single consolidated new chat.

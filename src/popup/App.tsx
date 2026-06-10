@@ -20,9 +20,13 @@ export default function App() {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const activeTab = tabs[0];
-        if (activeTab && activeTab.url &&
-            (activeTab.url.includes('claude.ai/chat/') || activeTab.url.includes('claude.ai/new'))) {
-          setIsChatPage(true);
+        if (activeTab && activeTab.url) {
+          const url = activeTab.url;
+          const isClaudeChat = url.includes('claude.ai/chat/') || url.includes('claude.ai/new');
+          const isChatGPTChat = url.includes('chatgpt.com/c/');
+          if (isClaudeChat || isChatGPTChat) {
+            setIsChatPage(true);
+          }
         }
       });
     }

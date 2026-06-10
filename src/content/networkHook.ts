@@ -8,7 +8,7 @@
     const url = typeof input === 'string' ? input : (input as Request).url ?? '';
     const response = await _fetch.apply(this, args);
 
-    if (url && (url.includes('chat_conversations') || url.includes('/org'))) {
+    if (url && (url.includes('chat_conversations') || url.includes('/org') || url.includes('backend-api/conversation'))) {
       const clone = response.clone();
       try {
         const json = await clone.json();
@@ -38,7 +38,7 @@
   XMLHttpRequest.prototype.send = function (body?: any) {
     this.addEventListener('load', () => {
       const url: string = (this as any)._cbUrl ?? '';
-      if (url && (url.includes('chat_conversations') || url.includes('/org'))) {
+      if (url && (url.includes('chat_conversations') || url.includes('/org') || url.includes('backend-api/conversation'))) {
         try {
           const json = JSON.parse(this.responseText);
           window.dispatchEvent(new CustomEvent('ContextBridge_NetworkEvent', {

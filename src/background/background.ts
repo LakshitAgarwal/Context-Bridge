@@ -38,17 +38,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           title: project.title,
           promptText,
           targetPlatform,
-          createdAt: Date.now(), // used by injector to reject stale sessions
+          createdAt: Date.now(),
         };
 
-        // Cache session context locally so content script in new tab can fetch it
-        chrome.storage.local.set({ context_restoration_session: session }, () => {
-          // Open target workspace new chat session
-          const url = targetPlatform === 'chatgpt' ? 'https://chatgpt.com/' : 
-                      targetPlatform === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new';
-          chrome.tabs.create({ url }, (tab) => {
-            sendResponse({ success: true, tabId: tab.id });
-          });
+        const url = targetPlatform === 'chatgpt' ? 'https://chatgpt.com/' : 
+                    targetPlatform === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new';
+
+        chrome.tabs.create({ url }, (tab) => {
+          if (tab.id) {
+            // Store the session in local storage but keyed by the specific tab ID
+            // This is 100% foolproof against ghost injections on other tabs.
+            const key = `context_restoration_tab_${tab.id}`;
+            chrome.storage.local.set({ [key]: session }, () => {
+              sendResponse({ success: true, tabId: tab.id });
+            });
+          } else {
+            sendResponse({ success: false, error: 'Could not get tab ID' });
+          }
         });
       })
       .catch((err) => {
@@ -57,6 +63,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
       
     return true; // Keep response channel open
+  }
+
+  // Content script asks for its session
+  if (message.action === 'CLAIM_SESSION') {
+    const tabId = sender.tab?.id;
+    if (!tabId) {
+      sendResponse(null);
+      return false;
+    }
+
+    const key = `context_restoration_tab_${tabId}`;
+    chrome.storage.local.get(key, (result) => {
+      const session = result[key];
+      if (session) {
+        // Atomic claim — delete it so it only fires once per tab lifecycle
+        chrome.storage.local.remove(key, () => {
+          sendResponse(session);
+        });
+      } else {
+        sendResponse(null);
+      }
+    });
+    return true; // async response
   }
 });
 export {};
