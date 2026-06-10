@@ -3,7 +3,7 @@
 [✓] one claude chat to a new chatgpt
 [✓] one claude chat to a gemini chat.
 [✓] gpt chat to claude/gemini
-[] gemini chat to claude/gpt
+[✓] gemini chat to claude/gpt
 [] one claude chat to a new claude chat in a different account.
 [] Merging Contexts: Combine multiple separate chat histories into a single consolidated new chat.
 [] Selective Branching: Pick specific messages to backup and branch off into a new chat, rather than the entire history.
