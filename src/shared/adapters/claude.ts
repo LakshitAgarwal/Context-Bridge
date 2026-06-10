@@ -120,22 +120,64 @@ export class ClaudeTargetAdapter implements TargetAdapter {
     const editor = document.querySelector('div[contenteditable="true"]') as HTMLDivElement;
     if (!editor) return false;
 
-    // Focus prompt window
+    // Focus the editor first
     editor.focus();
 
-    // Clear contents
+    // Clear any existing content
     editor.innerHTML = '';
 
-    // Inject text using standard insertText command (updates ProseMirror state)
-    const success = document.execCommand('insertText', false, text);
-    if (!success) {
-      editor.innerText = text;
-      editor.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+    // ── Strategy 1: Synthetic paste event via DataTransfer (Mac + Windows) ──────
+    // On macOS, Chrome blocks document.execCommand unless triggered by a real
+    // user gesture. A synthetic ClipboardEvent using DataTransfer bypasses this
+    // and works reliably on both platforms.
+    try {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', text);
+      const pasteEvent = new ClipboardEvent('paste', {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dt
+      });
+      editor.dispatchEvent(pasteEvent);
+
+      // Check if the editor now has text content — if so, Strategy 1 succeeded
+      if (editor.textContent && editor.textContent.trim().length > 0) {
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      }
+    } catch (e) {
+      console.warn('[ClaudeTargetAdapter] Strategy 1 (paste event) failed:', e);
     }
-    
-    // Trigger input event to guarantee model registers text box contents
-    editor.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
+
+    // ── Strategy 2: execCommand insertText (Works on Windows Chrome) ────────────
+    try {
+      const success = document.execCommand('insertText', false, text);
+      if (success && editor.textContent && editor.textContent.trim().length > 0) {
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      }
+    } catch (e) {
+      console.warn('[ClaudeTargetAdapter] Strategy 2 (execCommand) failed:', e);
+    }
+
+    // ── Strategy 3: Direct innerText + InputEvent (last resort) ─────────────────
+    // Manually set the text and fire an InputEvent so the React/ProseMirror
+    // virtual DOM gets notified. The Send button may not always enable itself
+    // with this approach, but the text will at least be visible.
+    try {
+      editor.innerText = text;
+      editor.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: text
+      }));
+      return true;
+    } catch (e) {
+      console.error('[ClaudeTargetAdapter] All injection strategies failed:', e);
+    }
+
+    return false;
   }
 
   async injectFile(file: File): Promise<boolean> {

@@ -9,7 +9,6 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectContext | null>(null);
-  const [activeRestoreMenu, setActiveRestoreMenu] = useState<string | null>(null);
 
   // 1. Fetch saved conversations and query current page type
   useEffect(() => {
@@ -242,37 +241,22 @@ export default function App() {
                   </div>
 
                   <div className="card-actions">
-                    <div className="restore-btn-container">
+                    <div className="continue-options">
+                      <span className="continue-text">Continue in:</span>
                       <button 
-                        className="btn-card btn-continue" 
-                        onClick={() => setActiveRestoreMenu(activeRestoreMenu === project.id ? null : project.id)}
-                        title="Inject context into a new chat"
+                        className="btn-card btn-target"
+                        onClick={() => handleRestore(project.id, 'claude')}
+                        title="Restore to a new Claude chat"
                       >
-                        🚀 Continue
+                        <span className="platform-dot platform-claude"></span> Claude
                       </button>
-                      
-                      {activeRestoreMenu === project.id && (
-                        <div className="restore-menu-popover">
-                          <button 
-                            className="restore-menu-item"
-                            onClick={() => {
-                              handleRestore(project.id, 'claude');
-                              setActiveRestoreMenu(null);
-                            }}
-                          >
-                            <span className="platform-icon">🦺</span> Claude
-                          </button>
-                          <button 
-                            className="restore-menu-item"
-                            onClick={() => {
-                              handleRestore(project.id, 'chatgpt');
-                              setActiveRestoreMenu(null);
-                            }}
-                          >
-                            <span className="platform-icon">🟢</span> ChatGPT
-                          </button>
-                        </div>
-                      )}
+                      <button 
+                        className="btn-card btn-target"
+                        onClick={() => handleRestore(project.id, 'chatgpt')}
+                        title="Restore to a new ChatGPT chat"
+                      >
+                        <span className="platform-dot platform-chatgpt"></span> ChatGPT
+                      </button>
                     </div>
                     <div className="btn-group-right">
                       <button 

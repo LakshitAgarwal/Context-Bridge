@@ -61,6 +61,10 @@
     promptText: string;
   }
 
+  window.addEventListener('ContextBridge_PingHook', () => {
+    window.dispatchEvent(new CustomEvent('ContextBridge_HookReady'));
+  });
+
   window.addEventListener('ContextBridge_RestoreEvent', (e: Event) => {
     const { fileContent, fileName, promptText } = (e as CustomEvent).detail as RestorePayload;
     console.log('[CB Hook] RestoreEvent received for file:', fileName);

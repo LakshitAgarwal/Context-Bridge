@@ -170,13 +170,12 @@ function checkActiveSession() {
     // Show the overlay immediately so the user knows something is happening
     createOverlay(session, 'loading');
 
-    // By the time we reach here (document_end + async storage read), networkHook.js
-    // has already been injected by extractor.ts at document_start and has had plenty
-    // of time to load. We add a small extra delay just to be safe, then fire the event.
-    // Events dispatched on window from the ISOLATED world ARE received by MAIN world
-    // listeners — they share the same underlying DOM event system.
-    setTimeout(() => {
-      console.log('[CB Injector] Dispatching ContextBridge_RestoreEvent…');
+    // Use a handshake to guarantee networkHook.js is ready before firing
+    let fired = false;
+    const fireEvent = () => {
+      if (fired) return;
+      fired = true;
+      console.log('[CB Injector] Hook ready. Dispatching ContextBridge_RestoreEvent…');
       window.dispatchEvent(new CustomEvent('ContextBridge_RestoreEvent', {
         detail: {
           fileContent: session.fileContent,
@@ -184,7 +183,26 @@ function checkActiveSession() {
           promptText:  session.promptText,
         },
       }));
-    }, 300);
+    };
+
+    window.addEventListener('ContextBridge_HookReady', fireEvent);
+
+    const pingInterval = setInterval(() => {
+      if (fired) {
+        clearInterval(pingInterval);
+      } else {
+        window.dispatchEvent(new CustomEvent('ContextBridge_PingHook'));
+      }
+    }, 100);
+
+    // Fallback if ping fails for 3 seconds
+    setTimeout(() => {
+      if (!fired) {
+        console.warn('[CB Injector] Handshake timed out, firing event anyway.');
+        clearInterval(pingInterval);
+        fireEvent();
+      }
+    }, 3000);
   });
 }
 

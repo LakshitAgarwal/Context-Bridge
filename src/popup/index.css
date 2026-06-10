@@ -432,6 +432,35 @@ body {
   color: #000;
 }
 
+/* Continue Inline Group */
+.continue-options {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.continue-text {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+
+.btn-target {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.btn-target:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 .btn-group-right {
   display: flex;
   gap: 4px;
