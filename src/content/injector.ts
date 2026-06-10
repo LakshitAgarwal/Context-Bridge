@@ -6,7 +6,8 @@ interface RestorationSession {
   title: string;
   promptText: string;
   targetPlatform?: string;
-  createdAt?: number; // ms timestamp — used to reject stale sessions
+  createdAt?: number;
+  targetTabId?: number; // only the tab with this ID may fire injection
 }
 
 // ── Overlay ───────────────────────────────────────────────────────────────────
@@ -136,93 +137,87 @@ window.addEventListener('ContextBridge_RestoreDone', () => {
 });
 
 // ── Session check ─────────────────────────────────────────────────────────────
+// ── Session check ─────────────────────────────────────────────────────────────
 function checkActiveSession() {
-  chrome.storage.local.get('context_restoration_session', (result) => {
+  chrome.runtime.sendMessage({ action: 'CLAIM_SESSION' }, (session: RestorationSession | null) => {
     if (chrome.runtime.lastError) {
-      console.warn('[CB Injector] Storage error:', chrome.runtime.lastError.message);
+      // Content scripts sometimes run before background is fully awake
+      console.warn('[CB Injector] Could not claim session:', chrome.runtime.lastError.message);
       return;
     }
 
-    const session = result['context_restoration_session'] as RestorationSession | undefined;
-    if (!session?.fileContent) return;
+    if (!session || !session.fileContent) {
+      // No session for this tab, silently exit
+      return;
+    }
 
-    // ── ATOMIC CLAIM ────────────────────────────────────────────────────────
-    // Delete immediately before any validation. This is the critical fix for
-    // ghost injection: if two tabs race on the same session (e.g. extension tab
-    // + a manually opened tab), only the first one to delete "wins". The second
-    // will find storage empty when it reads. We validate AFTER deleting.
-    chrome.storage.local.remove('context_restoration_session', () => {
-      // Staleness guard — reject sessions older than 30s
-      const SESSION_TTL_MS = 30_000;
-      if (session.createdAt && (Date.now() - session.createdAt) > SESSION_TTL_MS) {
-        console.warn('[CB Injector] Stale session discarded.');
-        return;
-      }
+    // Staleness guard — reject sessions older than 30s
+    const SESSION_TTL_MS = 30_000;
+    if (session.createdAt && (Date.now() - session.createdAt) > SESSION_TTL_MS) {
+      console.warn('[CB Injector] Stale session discarded.');
+      return;
+    }
 
-      // Only restore on the correct platform + new-chat URL
-      const href = window.location.href;
-      const host = window.location.hostname;
-      const targetPlatform = session.targetPlatform || 'claude';
+    // Only restore on the correct platform + new-chat URL
+    const href = window.location.href;
+    const host = window.location.hostname;
+    const targetPlatform = session.targetPlatform || 'claude';
 
-      let matchesPlatform = false;
-      let isNewChat = false;
+    let matchesPlatform = false;
+    let isNewChat = false;
 
-      if (targetPlatform === 'chatgpt') {
-        matchesPlatform = host.includes('chatgpt.com');
-        const path = window.location.pathname;
-        isNewChat = path === '/' || path === '' || path.startsWith('/?');
-      } else if (targetPlatform === 'gemini') {
-        matchesPlatform = host.includes('gemini.google.com');
-        const path = window.location.pathname;
-        isNewChat = path.startsWith('/app') || path === '/';
+    if (targetPlatform === 'chatgpt') {
+      matchesPlatform = host.includes('chatgpt.com');
+      const path = window.location.pathname;
+      isNewChat = path === '/' || path === '' || path.startsWith('/?');
+    } else if (targetPlatform === 'gemini') {
+      matchesPlatform = host.includes('gemini.google.com');
+      const path = window.location.pathname;
+      isNewChat = path.startsWith('/app') || path === '/';
+    } else {
+      matchesPlatform = host.includes('claude.ai');
+      isNewChat = href.includes('claude.ai/new') || /claude\.ai\/?(\?.*)?$/.test(href);
+    }
+
+    if (!matchesPlatform || !isNewChat) {
+      console.log('[CB Injector] Not the target page or existing chat — skipping restore.');
+      return;
+    }
+
+    console.log('[CB Injector] Claimed session for tab:', session.title);
+    createOverlay(session, 'loading');
+
+    let fired = false;
+    const fireEvent = () => {
+      if (fired) return;
+      fired = true;
+      console.log('[CB Injector] Hook ready. Dispatching ContextBridge_RestoreEvent…');
+      window.dispatchEvent(new CustomEvent('ContextBridge_RestoreEvent', {
+        detail: {
+          fileContent: session.fileContent,
+          fileName:    session.fileName,
+          promptText:  session.promptText,
+        },
+      }));
+    };
+
+    window.addEventListener('ContextBridge_HookReady', fireEvent);
+
+    const pingInterval = setInterval(() => {
+      if (fired) {
+        clearInterval(pingInterval);
       } else {
-        matchesPlatform = host.includes('claude.ai');
-        isNewChat = href.includes('claude.ai/new') || /claude\.ai\/?(\?.*)?$/.test(href);
+        window.dispatchEvent(new CustomEvent('ContextBridge_PingHook'));
       }
+    }, 100);
 
-      if (!matchesPlatform || !isNewChat) {
-        // Wrong platform or existing chat — put the session BACK so the correct
-        // tab can still consume it (e.g. this tab is claude.ai but session is for chatgpt).
-        console.log('[CB Injector] Not the target page — restoring session to storage.');
-        chrome.storage.local.set({ context_restoration_session: session });
-        return;
+    setTimeout(() => {
+      if (!fired) {
+        console.warn('[CB Injector] Handshake timed out, firing event anyway.');
+        clearInterval(pingInterval);
+        fireEvent();
       }
-
-      console.log('[CB Injector] Claimed session for:', session.title);
-      createOverlay(session, 'loading');
-
-      let fired = false;
-      const fireEvent = () => {
-        if (fired) return;
-        fired = true;
-        console.log('[CB Injector] Hook ready. Dispatching ContextBridge_RestoreEvent…');
-        window.dispatchEvent(new CustomEvent('ContextBridge_RestoreEvent', {
-          detail: {
-            fileContent: session.fileContent,
-            fileName:    session.fileName,
-            promptText:  session.promptText,
-          },
-        }));
-      };
-
-      window.addEventListener('ContextBridge_HookReady', fireEvent);
-
-      const pingInterval = setInterval(() => {
-        if (fired) {
-          clearInterval(pingInterval);
-        } else {
-          window.dispatchEvent(new CustomEvent('ContextBridge_PingHook'));
-        }
-      }, 100);
-
-      setTimeout(() => {
-        if (!fired) {
-          console.warn('[CB Injector] Handshake timed out, firing event anyway.');
-          clearInterval(pingInterval);
-          fireEvent();
-        }
-      }, 3000);
-    });
+    }, 3000);
   });
 }
 
