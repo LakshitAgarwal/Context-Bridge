@@ -155,7 +155,7 @@
     }
   }
 
-  // ── ChatGPT Injection Flow (NEW & ISOLATED) ──────────────────────────────────
+  // ── ChatGPT Injection Flow ─────────────────────────────────────────────────
   function getChatGPTEditor(): HTMLElement | null {
     return document.querySelector<HTMLElement>('#prompt-textarea');
   }
@@ -182,7 +182,6 @@
         inp.files = dt.files;
         inp.dispatchEvent(new Event('change', { bubbles: true }));
         inp.dispatchEvent(new Event('input', { bubbles: true }));
-
         console.log('[CB Hook] ChatGPT file injected via input element:', inp);
         return true;
       } catch (err) {
@@ -192,16 +191,23 @@
     return false;
   }
 
+  /**
+   * Waits for BOTH the editor AND a file input before injecting.
+   * ChatGPT mounts the file input asynchronously — racing it was why
+   * injection was only working 7/10 times.
+   */
   function waitForChatGPTEditorThenRestore(
     fileContent: string, fileName: string, promptText: string, attempt = 0
   ) {
     const editor = getChatGPTEditor();
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
 
-    if (!editor) {
-      if (attempt < 30) {
-        setTimeout(() => waitForChatGPTEditorThenRestore(fileContent, fileName, promptText, attempt + 1), 400);
+    if (!editor || !fileInput) {
+      if (attempt < 50) {
+        const delay = attempt < 25 ? 200 : 500;
+        setTimeout(() => waitForChatGPTEditorThenRestore(fileContent, fileName, promptText, attempt + 1), delay);
       } else {
-        console.warn('[CB Hook] ChatGPT editor never appeared — giving up.');
+        console.warn('[CB Hook] ChatGPT editor/file-input never appeared — giving up.');
       }
       return;
     }
@@ -210,13 +216,12 @@
     const fileInjected = tryChatGPTFileInject(file);
 
     if (fileInjected) {
-      // Allow ChatGPT to parse the file upload, then inject the restore prompt
       setTimeout(() => {
         const ed = getChatGPTEditor();
         if (ed) injectChatGPTText(ed, promptText);
         window.dispatchEvent(new CustomEvent('ContextBridge_RestoreDone'));
-        console.log('[CB Hook] ChatGPT File + prompt injected successfully.');
-      }, 1200);
+        console.log('[CB Hook] ChatGPT file + prompt injected successfully.');
+      }, 1500);
     } else {
       console.warn('[CB Hook] ChatGPT no file input found — falling back to text-only injection.');
       injectChatGPTText(editor, `${fileContent}\n\n---\n\n${promptText}`);

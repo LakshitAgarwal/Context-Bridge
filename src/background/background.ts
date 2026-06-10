@@ -37,7 +37,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           fileName,
           title: project.title,
           promptText,
-          targetPlatform
+          targetPlatform,
+          createdAt: Date.now(), // used by injector to reject stale sessions
         };
 
         // Cache session context locally so content script in new tab can fetch it
