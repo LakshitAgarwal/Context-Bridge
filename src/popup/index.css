@@ -127,6 +127,16 @@ body {
   box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
 }
 
+.platform-chatgpt {
+  background-color: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.4);
+}
+
+.platform-gemini {
+  background-color: #8b5cf6;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);
+}
+
 .btn-primary:active:not(:disabled) {
   transform: translateY(0);
 }

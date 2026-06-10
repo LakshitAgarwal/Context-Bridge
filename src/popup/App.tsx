@@ -222,15 +222,42 @@ export default function App() {
                 <div key={project.id} className="project-card">
                   <div className="card-info">
                     <div className="card-top">
-                      <span className="badge-platform">{project.sourcePlatform}</span>
-                      <span className="card-date">
-                        {new Date(project.createdAt).toLocaleDateString(undefined, {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
+                      <div className="card-top-left" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className={`badge-platform platform-${project.sourcePlatform}`}>
+                          {project.sourcePlatform}
+                        </span>
+                        <span className="card-date">
+                          {new Date(project.updatedAt).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <div className="btn-group-right">
+                        <button 
+                          className="btn-card-icon" 
+                          onClick={() => handleExportJSON(project)}
+                          title="Export JSON"
+                        >
+                          {'{ }'}
+                        </button>
+                        <button 
+                          className="btn-card-icon" 
+                          onClick={() => handleExportMarkdown(project)}
+                          title="Export Markdown (MD)"
+                        >
+                          📝
+                        </button>
+                        <button 
+                          className="btn-card-icon btn-delete" 
+                          onClick={() => setDeleteTarget(project)}
+                          title="Delete local backup"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                     <h3>{project.title}</h3>
                     <p className="card-stats">
@@ -240,7 +267,7 @@ export default function App() {
                     </p>
                   </div>
 
-                  <div className="card-actions">
+                  <div className="card-actions" style={{ justifyContent: 'flex-start' }}>
                     <div className="continue-options">
                       <span className="continue-text">Continue in:</span>
                       <button 
@@ -257,28 +284,12 @@ export default function App() {
                       >
                         <span className="platform-dot platform-chatgpt"></span> ChatGPT
                       </button>
-                    </div>
-                    <div className="btn-group-right">
                       <button 
-                        className="btn-card-icon" 
-                        onClick={() => handleExportJSON(project)}
-                        title="Export JSON"
+                        className="btn-card btn-target"
+                        onClick={() => handleRestore(project.id, 'gemini')}
+                        title="Restore to a new Gemini chat"
                       >
-                        {'{ }'}
-                      </button>
-                      <button 
-                        className="btn-card-icon" 
-                        onClick={() => handleExportMarkdown(project)}
-                        title="Export Markdown (MD)"
-                      >
-                        📝
-                      </button>
-                      <button 
-                        className="btn-card-icon btn-delete" 
-                        onClick={() => setDeleteTarget(project)}
-                        title="Delete local backup"
-                      >
-                        🗑️
+                        <span className="platform-dot platform-gemini"></span> Gemini
                       </button>
                     </div>
                   </div>

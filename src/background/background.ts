@@ -37,13 +37,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           fileName,
           title: project.title,
           promptText,
-          targetPlatform
+          targetPlatform,
+          createdAt: Date.now(), // used by injector to reject stale sessions
         };
 
         // Cache session context locally so content script in new tab can fetch it
         chrome.storage.local.set({ context_restoration_session: session }, () => {
           // Open target workspace new chat session
-          const url = targetPlatform === 'chatgpt' ? 'https://chatgpt.com/' : 'https://claude.ai/new';
+          const url = targetPlatform === 'chatgpt' ? 'https://chatgpt.com/' : 
+                      targetPlatform === 'gemini' ? 'https://gemini.google.com/app' : 'https://claude.ai/new';
           chrome.tabs.create({ url }, (tab) => {
             sendResponse({ success: true, tabId: tab.id });
           });
