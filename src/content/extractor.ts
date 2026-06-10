@@ -1,15 +1,18 @@
 import { ClaudeSourceAdapter } from '../shared/adapters/claude';
 import { ChatGPTSourceAdapter } from '../shared/adapters/chatgpt';
+import { GeminiSourceAdapter } from '../shared/adapters/gemini';
 import { SourceAdapter } from '../shared/adapters/base';
 import { ProjectContext } from '../shared/types';
 
 const claudeAdapter = new ClaudeSourceAdapter();
 const chatgptAdapter = new ChatGPTSourceAdapter();
+const geminiAdapter = new GeminiSourceAdapter();
 
 // Pick the right adapter based on the current hostname
 function getAdapter(): SourceAdapter {
   const host = window.location.hostname;
   if (host.includes('chatgpt.com')) return chatgptAdapter;
+  if (host.includes('gemini.google.com')) return geminiAdapter;
   return claudeAdapter; // default
 }
 
@@ -118,17 +121,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const title = rawTitle
         .replace(' - Claude', '')
         .replace(' | ChatGPT', '')
+        .replace('Gemini', '')
         .trim() || 'Scraped Chat';
 
       // Extract conversation ID from URL
       const matchClaude = window.location.href.match(/\/chat\/([a-f0-9\-]+)/);
       const matchGPT = window.location.href.match(/\/c\/([a-f0-9\-]+)/);
-      const id = matchClaude?.[1] || matchGPT?.[1] || `scraped-${Date.now()}`;
+      const matchGemini = window.location.href.match(/\/app\/([a-f0-9\-]+)/);
+      const id = matchClaude?.[1] || matchGPT?.[1] || matchGemini?.[1] || `scraped-${Date.now()}`;
+
+      const sourcePlatform = host.includes('chatgpt.com') ? 'chatgpt' : 
+                             host.includes('gemini.google.com') ? 'gemini' : 'claude';
 
       const project: ProjectContext = {
         id,
         title,
-        sourcePlatform: host.includes('chatgpt.com') ? 'chatgpt' : 'claude',
+        sourcePlatform,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         messages,
@@ -146,3 +154,51 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Trigger injection
 injectNetworkHook();
+
+// ── Gemini Auto-Scraper (DOM-based) ──────────────────────────────────────────
+// Since we don't intercept Gemini's obfuscated network requests, we use a
+// MutationObserver to automatically trigger DOM scraping when the chat updates.
+if (window.location.hostname.includes('gemini.google.com')) {
+  let scrapeTimeout: any = null;
+  let lastMessageCount = 0;
+
+  const performAutoScrape = async () => {
+    try {
+      const messages = await geminiAdapter.parseDOM();
+      // Only save if we actually have messages and the count has changed (or it's the first scrape)
+      if (messages.length > 0 && messages.length !== lastMessageCount) {
+        lastMessageCount = messages.length;
+        
+        const titleElement = document.querySelector('title') || document.querySelector('h1');
+        const title = (titleElement?.textContent?.trim() || 'Gemini Chat').replace('Gemini', '').trim() || 'Gemini Chat';
+        
+        const matchGemini = window.location.href.match(/\/app\/([a-f0-9\-]+)/);
+        const id = matchGemini?.[1] || `scraped-${Date.now()}`;
+
+        const project: ProjectContext = {
+          id,
+          title,
+          sourcePlatform: 'gemini',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messages,
+        };
+
+        lastExtractedConversation = project;
+        saveProject(project, title);
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    if (scrapeTimeout) clearTimeout(scrapeTimeout);
+    scrapeTimeout = setTimeout(performAutoScrape, 2000); // 2 second debounce
+  });
+
+  observer.observe(document.body, { childList: true, subtree: true });
+  
+  // Trigger initial scrape after a short delay to let the page load
+  setTimeout(performAutoScrape, 3000);
+}

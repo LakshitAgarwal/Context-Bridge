@@ -24,7 +24,8 @@ export default function App() {
           const url = activeTab.url;
           const isClaudeChat = url.includes('claude.ai/chat/') || url.includes('claude.ai/new');
           const isChatGPTChat = url.includes('chatgpt.com/c/');
-          if (isClaudeChat || isChatGPTChat) {
+          const isGeminiChat = url.includes('gemini.google.com/app');
+          if (isClaudeChat || isChatGPTChat || isGeminiChat) {
             setIsChatPage(true);
           }
         }
