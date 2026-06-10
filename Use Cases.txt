@@ -1,0 +1,11 @@
+[✓] one claude chat to a new claude chat.
+[✓] Automated Snapshots: Automatically backup the chat context after every message so progress is never lost.
+[] one claude chat to a new chatgpt/gemini chat.
+[] gpt chat to claude/gemini
+[] gemini chat to claude/gpt
+[] one claude chat to a new claude chat in a different account.
+[] Merging Contexts: Combine multiple separate chat histories into a single consolidated new chat.
+[] Selective Branching: Pick specific messages to backup and branch off into a new chat, rather than the entire history.
+[] Context Sharing & Export: Export chat context as a clean Markdown, JSON, or PDF file to share with team members or save externally.
+[] Template Injection: Restore a context backup alongside a predefined system prompt, persona, or coding instructions.
+[] IDE to Web Sync: Two-way or one-way syncing of local code context directly into an active web chat session.

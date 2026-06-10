@@ -47,7 +47,7 @@ export class ClaudeSourceAdapter implements SourceAdapter {
       }
     });
 
-    return parsed;
+    return deduplicateMessages(parsed);
   }
 
   normalizeNetworkResponse(url: string, payload: any): Message[] | null {
@@ -59,11 +59,14 @@ export class ClaudeSourceAdapter implements SourceAdapter {
     const chatMessages = payload.chat_messages || payload.messages || [];
     if (!Array.isArray(chatMessages)) return null;
 
-    return chatMessages.map((msg: any) => {
-      const role = msg.sender === 'human' ? 'user' : 'assistant';
+    const mapped: Message[] = chatMessages.map((msg: any) => {
+      const role: "user" | "assistant" | "system" = msg.sender === 'human' ? 'user' : 'assistant';
       
       let content = '';
-      if (typeof msg.text === 'string') {
+      // Check msg.text ONLY if it is a genuinely non-empty string.
+      // Claude's API often returns text: "" for assistant messages; the real
+      // content lives in the msg.content array — so we must fall through.
+      if (typeof msg.text === 'string' && msg.text.trim().length > 0) {
         content = msg.text;
       } else if (Array.isArray(msg.content)) {
         content = msg.content
@@ -72,8 +75,9 @@ export class ClaudeSourceAdapter implements SourceAdapter {
             if (c.type === 'tool_use') return `[Tool Use: ${c.name}]`;
             return '';
           })
+          .filter(Boolean)
           .join('\n');
-      } else if (typeof msg.content === 'string') {
+      } else if (typeof msg.content === 'string' && msg.content.trim().length > 0) {
         content = msg.content;
       }
 
@@ -91,6 +95,10 @@ export class ClaudeSourceAdapter implements SourceAdapter {
         attachments: attachments.length > 0 ? attachments : undefined
       };
     });
+
+    // Drop messages with no extractable content before deduplicating
+    const withContent = mapped.filter(m => m.content.trim().length > 0);
+    return deduplicateMessages(withContent);
   }
 }
 
@@ -102,6 +110,8 @@ export class ClaudeTargetAdapter implements TargetAdapter {
   }
 
   async isReady(): Promise<boolean> {
+    // Only check for the editor — the file input may not exist until the user
+    // interacts with the UI, so we must not block on it here.
     const editor = document.querySelector('div[contenteditable="true"]');
     return editor !== null;
   }
@@ -127,4 +137,89 @@ export class ClaudeTargetAdapter implements TargetAdapter {
     editor.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
   }
+
+  async injectFile(file: File): Promise<boolean> {
+    const editor = document.querySelector('div[contenteditable="true"]');
+    if (!editor) return false;
+
+    // Find the file input relative to the editor container
+    const container = editor.closest('form') || editor.closest('div[class*="editor"]') || editor.closest('div[class*="input"]') || document;
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    if (!fileInput) return false;
+
+    try {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      fileInput.files = dataTransfer.files;
+      
+      // Dispatch both change and input events to guarantee React state updates
+      fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+      
+      // Also simulate a drag-and-drop 'drop' event directly on the editor as a backup
+      const dropEvent = new DragEvent('drop', {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: dataTransfer
+      });
+      editor.dispatchEvent(dropEvent);
+      
+      return true;
+    } catch (e) {
+      console.error('[ClaudeTargetAdapter] Failed to inject file:', e);
+      return false;
+    }
+  }
+}
+
+// deduplicate consecutive message states within the same turn
+function deduplicateMessages(messages: Message[]): Message[] {
+  if (messages.length <= 1) return messages;
+
+  const cleanMessages: Message[] = [];
+  let currentGroup: Message[] = [];
+
+  for (const msg of messages) {
+    if (currentGroup.length === 0 || currentGroup[0].role === msg.role) {
+      currentGroup.push(msg);
+    } else {
+      cleanMessages.push(...filterConsecutiveGroup(currentGroup));
+      currentGroup = [msg];
+    }
+  }
+  if (currentGroup.length > 0) {
+    cleanMessages.push(...filterConsecutiveGroup(currentGroup));
+  }
+
+  return cleanMessages;
+}
+
+function filterConsecutiveGroup(group: Message[]): Message[] {
+  if (group.length <= 1) return group;
+
+  // Sort by content length descending
+  const sorted = [...group].map((msg, index) => ({ msg, index, text: msg.content.trim() }));
+  sorted.sort((a, b) => b.text.length - a.text.length);
+
+  const toKeep = new Set<number>();
+
+  for (let i = 0; i < sorted.length; i++) {
+    const candidate = sorted[i];
+    let isSubset = false;
+
+    for (const keptIndex of toKeep) {
+      const kept = group[keptIndex];
+      // If the candidate's text is contained within an already kept (longer) message, it's a duplicate/subset
+      if (kept.content.trim().includes(candidate.text)) {
+        isSubset = true;
+        break;
+      }
+    }
+
+    if (!isSubset && candidate.text.length > 0) {
+      toKeep.add(candidate.index);
+    }
+  }
+
+  return group.filter((_, index) => toKeep.has(index));
 }

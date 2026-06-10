@@ -1,232 +1,203 @@
-import { ClaudeTargetAdapter } from '../shared/adapters/claude';
-
-const targetAdapter = new ClaudeTargetAdapter();
 let overlayElement: HTMLDivElement | null = null;
 
 interface RestorationSession {
-  chunks: string[];
-  currentIndex: number;
+  fileContent: string;
+  fileName: string;
   title: string;
+  promptText: string;
+  targetPlatform?: string;
 }
 
-// 1. Render the premium, glassmorphic UI overlay on the Claude webpage
-function createOverlay(session: RestorationSession) {
-  if (overlayElement) {
-    overlayElement.remove();
-  }
+// ── Overlay ───────────────────────────────────────────────────────────────────
+function createOverlay(session: RestorationSession, status: 'loading' | 'ready' | 'error') {
+  const old = document.getElementById('context-bridge-overlay');
+  if (old) old.remove();
 
-  const chunkNum = session.currentIndex + 1;
-  const total = session.chunks.length;
-  const isLast = chunkNum === total;
+  // Inject one-time keyframes
+  if (!document.getElementById('cb-kf')) {
+    const s = document.createElement('style');
+    s.id = 'cb-kf';
+    s.textContent = [
+      '@keyframes cb-in  { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:translateY(0) } }',
+      '@keyframes cb-out { from { opacity:1; transform:translateY(0)   } to { opacity:0; transform:translateY(6px) } }',
+      '@keyframes cb-dot { 0%,100%{ opacity:.35; transform:scale(.8) } 50%{ opacity:1; transform:scale(1.1) } }',
+    ].join(' ');
+    document.head.appendChild(s);
+  }
 
   overlayElement = document.createElement('div');
   overlayElement.id = 'context-bridge-overlay';
-  
-  // Custom styles for a stunning modern dark glass UI
+
+  const isLoading = status === 'loading';
+
   Object.assign(overlayElement.style, {
-    position: 'fixed',
-    bottom: '24px',
-    right: '24px',
-    width: '340px',
-    padding: '20px',
-    borderRadius: '16px',
-    backgroundColor: 'rgba(28, 28, 30, 0.9)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
-    color: '#ffffff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-    zIndex: '9999999',
-    transition: 'all 0.3s ease',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px'
+    position:        'fixed',
+    bottom:          '28px',
+    left:            '50%',
+    transform:       'translateX(-50%) translateY(12px)',
+    display:         'inline-flex',
+    alignItems:      'center',
+    gap:             '10px',
+    padding:         '10px 18px',
+    borderRadius:    '100px',
+    background:      'rgba(12, 12, 14, 0.88)',
+    backdropFilter:  'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border:          '1px solid rgba(255,255,255,0.07)',
+    boxShadow:       '0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04)',
+    fontFamily:      '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize:        '13px',
+    fontWeight:      '500',
+    color:           '#e4e4e7',
+    whiteSpace:      'nowrap',
+    zIndex:          '2147483647',
+    opacity:         '0',
+    animation:       'cb-in 0.35s cubic-bezier(0.16,1,0.3,1) forwards',
+    userSelect:      'none',
+    pointerEvents:   'none',
   });
 
-  const titleHeader = document.createElement('div');
-  titleHeader.innerText = 'Context Bridge — Restoration';
-  Object.assign(titleHeader.style, {
-    fontSize: '12px',
-    fontWeight: 'bold',
-    textTransform: 'uppercase',
-    letterSpacing: '1px',
-    color: '#10B981' // Accent Emerald Green
+  // Dot
+  const dot = document.createElement('span');
+  Object.assign(dot.style, {
+    display:         'inline-block',
+    width:           '6px',
+    height:          '6px',
+    borderRadius:    '50%',
+    backgroundColor: isLoading ? '#52525b' : '#10b981',
+    flexShrink:      '0',
+    animation:       isLoading ? 'cb-dot 1s ease-in-out infinite' : 'none',
+    boxShadow:       isLoading ? 'none' : '0 0 8px #10b981aa',
   });
 
-  const chatTitle = document.createElement('div');
-  chatTitle.innerText = session.title;
-  Object.assign(chatTitle.style, {
-    fontSize: '16px',
-    fontWeight: '600',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-    color: '#f4f4f5'
+  // Text
+  const text = document.createElement('span');
+  // Truncate long titles to keep pill narrow
+  const maxLen = 36;
+  const title = session.title.length > maxLen
+    ? session.title.slice(0, maxLen) + '…'
+    : session.title;
+  text.innerText = isLoading ? 'Restoring context…' : title;
+  Object.assign(text.style, {
+    letterSpacing: '-0.01em',
   });
 
-  const progressText = document.createElement('div');
-  progressText.innerText = `Ingesting: Chunk ${chunkNum} of ${total}`;
-  Object.assign(progressText.style, {
-    fontSize: '13px',
-    color: '#a1a1aa'
+  // Hint (only on ready state)
+  const hint = document.createElement('span');
+  hint.innerText = 'Enter ↑';
+  Object.assign(hint.style, {
+    fontSize:   '11px',
+    color:      '#52525b',
+    marginLeft: '2px',
+    display:    isLoading ? 'none' : 'inline',
   });
 
-  // Visual Progress Bar
-  const progressTrack = document.createElement('div');
-  Object.assign(progressTrack.style, {
-    height: '6px',
-    borderRadius: '3px',
-    backgroundColor: '#3f3f46',
-    overflow: 'hidden'
-  });
-
-  const progressBar = document.createElement('div');
-  Object.assign(progressBar.style, {
-    height: '100%',
-    width: `${(chunkNum / total) * 100}%`,
-    backgroundColor: '#10B981',
-    transition: 'width 0.4s ease'
-  });
-  progressTrack.appendChild(progressBar);
-
-  const instructions = document.createElement('div');
-  instructions.innerText = isLast
-    ? 'This is the final chunk! Press Enter to send and complete the context upload.'
-    : 'Press Enter to send this chunk, then click "Inject Next" once Claude finishes responding.';
-  Object.assign(instructions.style, {
-    fontSize: '12px',
-    lineHeight: '1.4',
-    color: '#e4e4e7',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    padding: '8px 12px',
-    borderRadius: '8px',
-    borderLeft: '3px solid #10B981'
-  });
-
-  const buttonContainer = document.createElement('div');
-  Object.assign(buttonContainer.style, {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '8px',
-    marginTop: '8px'
-  });
-
-  const cancelBtn = document.createElement('button');
-  cancelBtn.innerText = 'Cancel';
-  Object.assign(cancelBtn.style, {
-    flex: '1',
-    padding: '8px 12px',
-    borderRadius: '8px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'transparent',
-    color: '#f4f4f5',
-    fontSize: '13px',
-    fontWeight: '500',
-    cursor: 'pointer',
-    transition: 'background-color 0.2s'
-  });
-  cancelBtn.addEventListener('mouseenter', () => cancelBtn.style.backgroundColor = 'rgba(255, 255, 255, 0.05)');
-  cancelBtn.addEventListener('mouseleave', () => cancelBtn.style.backgroundColor = 'transparent');
-  cancelBtn.addEventListener('click', () => {
-    chrome.storage.local.remove('context_restoration_session', () => {
-      if (overlayElement) overlayElement.remove();
-    });
-  });
-
-  const nextBtn = document.createElement('button');
-  nextBtn.innerText = isLast ? 'Finish' : 'Inject Next';
-  Object.assign(nextBtn.style, {
-    flex: '2',
-    padding: '8px 12px',
-    borderRadius: '8px',
-    border: 'none',
-    backgroundColor: '#10B981',
-    color: '#09090b',
-    fontSize: '13px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    transition: 'opacity 0.2s'
-  });
-  nextBtn.addEventListener('mouseenter', () => nextBtn.style.opacity = '0.9');
-  nextBtn.addEventListener('mouseleave', () => nextBtn.style.opacity = '1');
-  nextBtn.addEventListener('click', () => {
-    if (isLast) {
-      // End session
-      chrome.storage.local.remove('context_restoration_session', () => {
-        if (overlayElement) overlayElement.remove();
-        console.log('[Context Bridge] Restoration session successfully finalized.');
-      });
-    } else {
-      // Proceed to next chunk
-      session.currentIndex += 1;
-      chrome.storage.local.set({ context_restoration_session: session }, () => {
-        // Rerender overlay and inject the next chunk
-        createOverlay(session);
-        attemptInjection(session.chunks[session.currentIndex]);
-      });
-    }
-  });
-
-  buttonContainer.appendChild(cancelBtn);
-  buttonContainer.appendChild(nextBtn);
-
-  overlayElement.appendChild(titleHeader);
-  overlayElement.appendChild(chatTitle);
-  overlayElement.appendChild(progressText);
-  overlayElement.appendChild(progressTrack);
-  overlayElement.appendChild(instructions);
-  overlayElement.appendChild(buttonContainer);
-
+  overlayElement.append(dot, text, hint);
+  overlayElement.dataset.title = session.title; // used by RestoreDone handler
   document.body.appendChild(overlayElement);
 }
 
-// 2. Poll the DOM for Claude's text input box and run target adapter text filling
-function attemptInjection(text: string, attempts = 0) {
-  targetAdapter.isReady().then(ready => {
-    if (ready) {
-      targetAdapter.injectPrompt(text).then(success => {
-        if (success) {
-          console.log('[Context Bridge] Chunk successfully loaded into active prompt box.');
-        } else {
-          console.error('[Context Bridge] Failed to inject text into editor.');
-        }
-      });
-    } else if (attempts < 15) {
-      // Keep polling (editor can take time to load in React DOM lifecycle)
-      setTimeout(() => attemptInjection(text, attempts + 1), 400);
-    } else {
-      console.warn('[Context Bridge] Timed out waiting for Claude editor input container.');
-    }
-  });
-}
+// Update to ready state + auto-dismiss
+window.addEventListener('ContextBridge_RestoreDone', () => {
+  if (!overlayElement) return;
 
-// 3. Page load initialization
+  const [dot, text, hint] = overlayElement.children as any;
+
+  // Dot → green glow
+  dot.style.backgroundColor = '#10b981';
+  dot.style.boxShadow = '0 0 8px #10b981aa';
+  dot.style.animation = 'none';
+
+  // Text → chat title (stored in session, pull from overlay's data attr)
+  // We re-read from the stored title on the element itself
+  const rawTitle = overlayElement.dataset.title || '';
+  const maxLen = 36;
+  text.innerText = rawTitle.length > maxLen ? rawTitle.slice(0, maxLen) + '…' : rawTitle;
+
+  // Show hint
+  hint.style.display = 'inline';
+
+  // Subtle green glow on border
+  overlayElement.style.border = '1px solid rgba(16,185,129,0.2)';
+  overlayElement.style.boxShadow = '0 4px 24px rgba(0,0,0,0.4), 0 0 16px rgba(16,185,129,0.12)';
+
+  chrome.storage.local.remove('context_restoration_session');
+
+  // Auto-dismiss after 4 s
+  setTimeout(() => {
+    if (!overlayElement) return;
+    overlayElement.style.animation = 'cb-out 0.35s ease forwards';
+    setTimeout(() => { overlayElement?.remove(); overlayElement = null; }, 380);
+  }, 4000);
+});
+
+// ── Session check ─────────────────────────────────────────────────────────────
 function checkActiveSession() {
   chrome.storage.local.get('context_restoration_session', (result) => {
-    const session = result.context_restoration_session as RestorationSession | undefined;
-    if (session && session.chunks && session.chunks.length > 0) {
-      console.log('[Context Bridge] Active context restoration session detected:', session.title);
-      
-      // Inject prompt content
-      attemptInjection(session.chunks[session.currentIndex]);
-      
-      // Renders controller panel overlay
-      createOverlay(session);
+    if (chrome.runtime.lastError) {
+      console.warn('[CB Injector] Storage error:', chrome.runtime.lastError.message);
+      return;
     }
+
+    const session = result['context_restoration_session'] as RestorationSession | undefined;
+    if (!session?.fileContent) return;
+
+    // Only restore on new-chat pages of the target platform
+    const href = window.location.href;
+    const host = window.location.hostname;
+    const targetPlatform = session.targetPlatform || 'claude';
+
+    let matchesPlatform = false;
+    let isNewChat = false;
+
+    if (targetPlatform === 'chatgpt') {
+      matchesPlatform = host.includes('chatgpt.com');
+      const path = window.location.pathname;
+      // Accept / or query params, but exclude chat rooms, settings, share links, etc.
+      isNewChat = path === '/' || path === '' || path.startsWith('/?');
+    } else {
+      matchesPlatform = host.includes('claude.ai');
+      isNewChat = href.includes('claude.ai/new') || /claude\.ai\/?(\?.*)?$/.test(href);
+    }
+
+    if (!matchesPlatform || !isNewChat) {
+      console.log('[CB Injector] Existing chat page or incorrect platform — skipping restore.');
+      return;
+    }
+
+    console.log('[CB Injector] Pending session found:', session.title);
+
+    // Show the overlay immediately so the user knows something is happening
+    createOverlay(session, 'loading');
+
+    // By the time we reach here (document_end + async storage read), networkHook.js
+    // has already been injected by extractor.ts at document_start and has had plenty
+    // of time to load. We add a small extra delay just to be safe, then fire the event.
+    // Events dispatched on window from the ISOLATED world ARE received by MAIN world
+    // listeners — they share the same underlying DOM event system.
+    setTimeout(() => {
+      console.log('[CB Injector] Dispatching ContextBridge_RestoreEvent…');
+      window.dispatchEvent(new CustomEvent('ContextBridge_RestoreEvent', {
+        detail: {
+          fileContent: session.fileContent,
+          fileName:    session.fileName,
+          promptText:  session.promptText,
+        },
+      }));
+    }, 300);
   });
 }
 
-// Run checks once page loads
-if (document.readyState === 'complete') {
-  checkActiveSession();
-} else {
-  window.addEventListener('load', checkActiveSession);
-}
+// ── Init ──────────────────────────────────────────────────────────────────────
+// Run immediately — content scripts are injected at document_end so the DOM
+// and chrome APIs are already available.
+checkActiveSession();
 
-// Listen for updates from background service worker in case a redirect triggered restoration
+// Re-check if the background worker signals a new session (e.g. navigation)
 chrome.runtime.onMessage.addListener((message) => {
   if (message.action === 'SESSION_UPDATED') {
     checkActiveSession();
   }
 });
+
+export {};

@@ -12,4 +12,5 @@ export interface TargetAdapter {
   detect(url: string): boolean;
   injectPrompt(text: string): Promise<boolean>;
   isReady(): Promise<boolean>;
+  injectFile?(file: File): Promise<boolean>;
 }

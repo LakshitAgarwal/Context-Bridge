@@ -8,19 +8,27 @@ export default function App() {
   const [isChatPage, setIsChatPage] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectContext | null>(null);
+  const [activeRestoreMenu, setActiveRestoreMenu] = useState<string | null>(null);
 
   // 1. Fetch saved conversations and query current page type
   useEffect(() => {
     loadProjects();
 
+    // Poll every 2 s while the popup is open to catch background saves
+    const poll = setInterval(loadProjects, 2000);
+
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const activeTab = tabs[0];
-        if (activeTab && activeTab.url && activeTab.url.includes('claude.ai/chat/')) {
+        if (activeTab && activeTab.url &&
+            (activeTab.url.includes('claude.ai/chat/') || activeTab.url.includes('claude.ai/new'))) {
           setIsChatPage(true);
         }
       });
     }
+
+    return () => clearInterval(poll);
   }, []);
 
   const loadProjects = async () => {
@@ -60,8 +68,11 @@ export default function App() {
         }
 
         if (response && response.success) {
+          // Reload immediately then again at 500ms and 1500ms to catch async IndexedDB write
           loadProjects();
-          showStatus(`Successfully saved: "${response.data.title}" (${response.source === 'network' ? 'Network Intercepted' : 'DOM Scraped'})`);
+          setTimeout(loadProjects, 500);
+          setTimeout(loadProjects, 1500);
+          showStatus(`Saved: "${response.data.title}" (${response.source === 'network' ? 'API Intercepted' : 'DOM Scraped'})`);
         } else {
           showStatus(response?.error || 'Extraction failed.', true);
         }
@@ -70,7 +81,7 @@ export default function App() {
   };
 
   // 3. Initiate Restoration Flow
-  const handleRestore = (projectId: string) => {
+  const handleRestore = (projectId: string, targetPlatform: string) => {
     if (typeof chrome === 'undefined' || !chrome.runtime) {
       showStatus('Chrome Extension context not active.', true);
       return;
@@ -78,11 +89,11 @@ export default function App() {
 
     chrome.runtime.sendMessage({
       action: 'RESTORE_CONVERSATION',
-      payload: { projectId }
+      payload: { projectId, targetPlatform }
     }, (response) => {
       if (response && response.success) {
-        showStatus('Restoration session started. Redirecting to new Claude chat...');
-        window.close(); // Close popup
+        showStatus(`Restoration started. Redirecting to new ${targetPlatform === 'chatgpt' ? 'ChatGPT' : 'Claude'} chat...`);
+        setTimeout(() => window.close(), 1000); // Close popup after a short delay
       } else {
         showStatus(response?.error || 'Failed to start restoration.', true);
       }
@@ -133,11 +144,10 @@ export default function App() {
 
   // 5. Delete project
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this backup from local storage?')) {
-      await ContextBridgeDB.deleteProject(id);
-      loadProjects();
-      showStatus('Backup deleted.');
-    }
+    await ContextBridgeDB.deleteProject(id);
+    setDeleteTarget(null);
+    loadProjects();
+    showStatus('Backup deleted.');
   };
 
   const calculateTotalTokens = (project: ProjectContext): number => {
@@ -173,10 +183,26 @@ export default function App() {
         )}
       </section>
 
-      {/* Notification Toast */}
+      {/* Notification Toast — in-flow, not absolute */}
       {statusMessage && (
         <div className={`status-toast ${statusMessage.error ? 'status-error' : 'status-success'}`}>
           {statusMessage.text}
+        </div>
+      )}
+
+      {/* Custom delete confirmation modal */}
+      {deleteTarget && (
+        <div className="modal-backdrop">
+          <div className="modal-box">
+            <div className="modal-icon">🗑️</div>
+            <div className="modal-title">Delete Backup?</div>
+            <div className="modal-chat-name">{deleteTarget.title}</div>
+            <div className="modal-subtitle">This removes the local backup permanently. The original chat on Claude is unaffected.</div>
+            <div className="modal-buttons">
+              <button className="modal-cancel" onClick={() => setDeleteTarget(null)}>Cancel</button>
+              <button className="modal-delete" onClick={() => handleDelete(deleteTarget.id)}>Delete</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -216,13 +242,38 @@ export default function App() {
                   </div>
 
                   <div className="card-actions">
-                    <button 
-                      className="btn-card btn-continue" 
-                      onClick={() => handleRestore(project.id)}
-                      title="Inject context into a new Claude chat"
-                    >
-                      🚀 Continue
-                    </button>
+                    <div className="restore-btn-container">
+                      <button 
+                        className="btn-card btn-continue" 
+                        onClick={() => setActiveRestoreMenu(activeRestoreMenu === project.id ? null : project.id)}
+                        title="Inject context into a new chat"
+                      >
+                        🚀 Continue
+                      </button>
+                      
+                      {activeRestoreMenu === project.id && (
+                        <div className="restore-menu-popover">
+                          <button 
+                            className="restore-menu-item"
+                            onClick={() => {
+                              handleRestore(project.id, 'claude');
+                              setActiveRestoreMenu(null);
+                            }}
+                          >
+                            <span className="platform-icon">🦺</span> Claude
+                          </button>
+                          <button 
+                            className="restore-menu-item"
+                            onClick={() => {
+                              handleRestore(project.id, 'chatgpt');
+                              setActiveRestoreMenu(null);
+                            }}
+                          >
+                            <span className="platform-icon">🟢</span> ChatGPT
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <div className="btn-group-right">
                       <button 
                         className="btn-card-icon" 
@@ -240,7 +291,7 @@ export default function App() {
                       </button>
                       <button 
                         className="btn-card-icon btn-delete" 
-                        onClick={() => handleDelete(project.id)}
+                        onClick={() => setDeleteTarget(project)}
                         title="Delete local backup"
                       >
                         🗑️

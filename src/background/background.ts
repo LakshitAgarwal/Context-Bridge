@@ -1,5 +1,5 @@
 import { ContextBridgeDB } from '../shared/db';
-import { prepareChunks } from '../shared/transfer';
+import { compileHistoryToMarkdown } from '../shared/transfer';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Context Bridge BG] Received action:', message.action, 'from', sender.tab?.url || 'popup');
@@ -16,9 +16,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep response channel open
   }
 
-  // 2. Prepare chunks and trigger target platform context loading
+  // 2. Prepare context file and trigger target platform context loading
   if (message.action === 'RESTORE_CONVERSATION') {
-    const { projectId } = message.payload;
+    const { projectId, targetPlatform = 'claude' } = message.payload;
     
     ContextBridgeDB.getProject(projectId)
       .then((project) => {
@@ -27,19 +27,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
 
-        // Compile prompt packages (using 4000 token heuristics limit)
-        const chunkInfo = prepareChunks(project.messages, 4000);
-        
+        const fileContent = compileHistoryToMarkdown(project.messages);
+        const sanitizedTitle = project.title.toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const fileName = `restored_chat_${sanitizedTitle || 'history'}.md`;
+        const promptText = `I have uploaded our previous conversation history as a file. Please read it to fully restore the context of our chat, and confirm you are ready to continue from where we left off.`;
+
         const session = {
-          chunks: chunkInfo.chunks,
-          currentIndex: 0,
-          title: project.title
+          fileContent,
+          fileName,
+          title: project.title,
+          promptText,
+          targetPlatform
         };
 
         // Cache session context locally so content script in new tab can fetch it
         chrome.storage.local.set({ context_restoration_session: session }, () => {
           // Open target workspace new chat session
-          chrome.tabs.create({ url: 'https://claude.ai/new' }, (tab) => {
+          const url = targetPlatform === 'chatgpt' ? 'https://chatgpt.com/' : 'https://claude.ai/new';
+          chrome.tabs.create({ url }, (tab) => {
             sendResponse({ success: true, tabId: tab.id });
           });
         });

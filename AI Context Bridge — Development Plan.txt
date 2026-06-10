@@ -1,4 +1,4 @@
-﻿AI Context Bridge — Development Plan
+AI Context Bridge — Development Plan
 Vision
 Build a browser extension that allows users to move AI conversations between:
 * Claude Chat → New Claude Chat
@@ -206,26 +206,19 @@ ________________
 
 
 ________________
-Module 5: Chunk Engine
-Necessary because long chats can exceed limits.
+Module 5: Single-File Ingestion Engine
+Responsibility:
+Prepare chat context as a unified document.
 ________________
 
 
-Goal
-Split conversation safely.
-Example:
-Chunk 1
-
-
-Chunk 2
-
-
-Chunk 3
+Goal:
+Generate a single Markdown log file of the complete conversation history.
 ________________
 
 
 Functions:
-createChunks()
+compileHistoryToMarkdown()
 
 
 estimateTokens()
@@ -249,21 +242,22 @@ Select Project
       ↓
 Open New Claude Chat
       ↓
-Load Context
+Upload Context File & System Prompt
 ________________
 
 
 Loader:
 1. Retrieves project
-2. Retrieves chunks
-3. Injects chunk(s) into chat input
+2. Compiles complete history into a virtual Markdown file
+3. Automatically uploads file to the editor via hidden file input simulation
+4. Injects context alignment system prompt instructions in prompt box
 ________________
 
 
 Important:
 Never auto-send.
-Only populate input.
-User presses Enter.
+Only populate input and attach file.
+User reviews and presses Enter to initiate ingestion.
 ________________
 
 
